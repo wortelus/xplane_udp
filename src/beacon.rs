@@ -1,11 +1,11 @@
-use log::{debug, error, info};
+use log::{error, info, debug};
 use std::io;
-use std::io::Error;
-use std::net::{IpAddr, Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::time::Duration;
+
+use crate::consts::{XP_MULTICAST_ADDR, XP_MULTICAST_GRP,
+                    BEACON_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES};
 use crate::beacon_data::BeaconData;
-use crate::consts;
-use crate::consts::{BEACON_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES};
 
 pub struct Beacon {
     data: BeaconData,
@@ -15,68 +15,62 @@ pub struct Beacon {
 
 impl Beacon {
     pub fn new() -> io::Result<Self> {
-        let socket = Self::init_beacon(consts::XP_MULTICAST_PORT)?;
+        let socket = Self::init_beacon(XP_MULTICAST_ADDR)?;
 
         Ok(Beacon {
             data: BeaconData::default(),
-            xp_multicast_address: consts::XP_MULTICAST_ADDR,
+            xp_multicast_address: XP_MULTICAST_ADDR,
             xp_multicast_beacon_socket: socket,
         })
     }
 
-    pub fn new_with_address(beacon_addr: SocketAddrV4) -> io::Result<Self> {
-        let socket = Self::init_beacon(beacon_addr.port())?;
+    pub fn new_with_address(beacon_address: SocketAddrV4) -> io::Result<Self> {
+        let socket = Self::init_beacon(beacon_address)?;
 
         Ok(Beacon {
             data: BeaconData::default(),
-            xp_multicast_address: consts::XP_MULTICAST_ADDR,
+            xp_multicast_address: beacon_address,
             xp_multicast_beacon_socket: socket,
         })
+    }
+
+    fn init_beacon(beacon_address: SocketAddrV4) -> io::Result<UdpSocket> {
+        let port = beacon_address.port();
+        debug!("Init beacon socket on port {}", port);
+        let beacon_socket = UdpSocket::bind(format!("0.0.0.0:{}", port))?;
+        beacon_socket.set_nonblocking(true)?;
+
+        if !beacon_address.ip().is_multicast() {
+            error!("Invalid multicast address: {}", beacon_address.ip());
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid multicast address"));
+        }
+
+        Ok(beacon_socket)
     }
 
     pub fn close_beacon(&self) -> io::Result<()> {
         self.xp_multicast_beacon_socket.leave_multicast_v4(
-            &consts::XP_MULTICAST_GRP,
+            &XP_MULTICAST_GRP,
             &Ipv4Addr::UNSPECIFIED,
         )
     }
 
-    fn init_beacon(port: u16) -> io::Result<UdpSocket> {
-        debug!("Init beacon socket on port {}", port);
-        let beacon_socket = UdpSocket::bind(format!("0.0.0.0:{}", port))?;
-        beacon_socket.set_nonblocking(true)?;
-        Ok(beacon_socket)
+    pub fn connect_beacon(&mut self) -> io::Result<()> {
+        info!("Connecting to X-Plane multicast group: {}", self.xp_multicast_address);
+
+        self.xp_multicast_beacon_socket.join_multicast_v4(
+            // IP address of X-Plane multicast group
+            self.xp_multicast_address.ip(),
+            // Listen on all interfaces
+            &Ipv4Addr::UNSPECIFIED,
+        )?;
+
+        Ok(())
     }
 
-    pub fn connect_beacon(&mut self, beacon_addr: IpAddr) -> io::Result<()> {
-        info!("Connecting to X-Plane multicast group: {}", beacon_addr);
-
-        match beacon_addr {
-            IpAddr::V4(beacon_ip) => {
-                if !beacon_ip.is_multicast() {
-                    return Err(Error::new(io::ErrorKind::InvalidInput,
-                                          "Expected a multicast address"));
-                }
-
-                self.xp_multicast_beacon_socket.join_multicast_v4(
-                    // IP address of X-Plane multicast group
-                    &beacon_ip,
-                    // Listen on all interfaces
-                    &Ipv4Addr::UNSPECIFIED,
-                )?;
-
-                Ok(())
-            }
-            IpAddr::V6(_) => {
-                Err(Error::new(io::ErrorKind::InvalidInput,
-                               "Expected an IPv4 multicast address"))
-            }
-        }
-    }
-
-    pub fn intercept_beacon(&mut self) -> Result<(), Box<dyn error::Error>>{
+    pub fn intercept_beacon(&mut self) -> Result<(), io::Error> {
         let mut buf = [0; BEACON_BUFFER_SIZE];
-        let mut tries = 0;
+        let mut tries = 1;
 
         loop {
             match self.xp_multicast_beacon_socket.recv_from(&mut buf) {
@@ -97,7 +91,9 @@ impl Beacon {
                             } else {
                                 error!("Failed to parse beacon message after {} tries",
                                     XP_MULTICAST_PARSE_MAX_TRIES);
-                                return Err(e);
+                                return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                                          "Failed to parse beacon message",
+                                ));
                             }
                         }
                     }
@@ -108,7 +104,7 @@ impl Beacon {
                 }
                 Err(e) => {
                     error!("Error receiving beacon messages: {}", e);
-                    return Err(Box::new(e));
+                    return Err(e);
                 }
             }
 
@@ -118,7 +114,7 @@ impl Beacon {
         }
     }
 
-    fn parse_beacon_message(&mut self, msg: [u8; BEACON_BUFFER_SIZE]) -> Result<(), Box<dyn error::Error>> {
+    fn parse_beacon_message(&mut self, msg: [u8; BEACON_BUFFER_SIZE]) -> Result<(), io::Error> {
         let beacon = BeaconData::from_bytes(&msg)?;
         self.data = beacon;
         Ok(())
@@ -126,5 +122,4 @@ impl Beacon {
 
     pub fn get_beacon(&self) -> &BeaconData { &self.data }
     pub fn get_address(&self) -> SocketAddrV4 { self.xp_multicast_address }
-
 }
