@@ -10,7 +10,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn auto_discover_default() -> Result<Self, io::Error> {
+    pub fn auto_discover_default(timeout: u64) -> Result<Self, io::Error> {
         let xp_receiving_socket = UdpSocket::bind("0.0.0.0:0")
             .map_err(|e| {
                 error!("Failed to bind to receiving socket: {}", e);
@@ -18,13 +18,14 @@ impl Session {
             })?;
 
         Ok(Session {
-            beacon: Some(Beacon::new()?),
+            beacon: Some(Beacon::new(timeout)?),
             xp_receiving_socket,
         })
     }
 
     pub fn auto_discover(beacon_addr: SocketAddrV4,
-                         xp_receiving_address: SocketAddr) -> Result<Self, io::Error> {
+                         xp_receiving_address: SocketAddr,
+                         timeout: u64) -> Result<Self, io::Error> {
         let xp_receiving_socket = UdpSocket::bind(xp_receiving_address)
             .map_err(|e| {
                 error!("Failed to bind to receiving socket on {}: {}", xp_receiving_address, e);
@@ -32,7 +33,7 @@ impl Session {
             })?;
 
         Ok(Session {
-            beacon: Some(Beacon::new_with_address(beacon_addr)?),
+            beacon: Some(Beacon::new_with_address(beacon_addr, timeout)?),
             xp_receiving_socket,
         })
     }

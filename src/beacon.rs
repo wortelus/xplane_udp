@@ -5,7 +5,7 @@ use tokio::time::{self, Duration};
 
 use crate::consts::{XP_MULTICAST_ADDR, XP_MULTICAST_GRP,
                     BEACON_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES,
-                    XP_MULTICAST_RETRY_TIMEOUT_MS};
+                    XP_MULTICAST_TIMEOUT_MAX_TRIES};
 use crate::beacon_data::BeaconData;
 
 pub struct Beacon {
@@ -15,7 +15,7 @@ pub struct Beacon {
 }
 
 impl Beacon {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(timeout: u64) -> io::Result<Self> {
         let socket = Self::init_beacon(XP_MULTICAST_ADDR)?;
 
         let mut beacon = Beacon {
@@ -24,11 +24,11 @@ impl Beacon {
             xp_multicast_beacon_socket: socket,
         };
 
-        beacon.set_timeout(XP_MULTICAST_RETRY_TIMEOUT_MS)?;
+        beacon.set_timeout(timeout)?;
         Ok(beacon)
     }
 
-    pub fn new_with_address(beacon_address: SocketAddrV4) -> io::Result<Self> {
+    pub fn new_with_address(beacon_address: SocketAddrV4, timeout: u64) -> io::Result<Self> {
         let socket = Self::init_beacon(beacon_address)?;
 
         let mut beacon = Beacon {
@@ -37,7 +37,7 @@ impl Beacon {
             xp_multicast_beacon_socket: socket,
         };
 
-        beacon.set_timeout(XP_MULTICAST_RETRY_TIMEOUT_MS)?;
+        beacon.set_timeout(timeout)?;
         Ok(beacon)
     }
 
@@ -45,7 +45,7 @@ impl Beacon {
         let port = beacon_address.port();
         debug!("Init beacon socket on port {}", port);
         let beacon_socket = UdpSocket::bind(format!("0.0.0.0:{}", port))?;
-        beacon_socket.set_nonblocking(true)?;
+        beacon_socket.set_nonblocking(false)?;
 
         if !beacon_address.ip().is_multicast() {
             error!("Invalid multicast address: {}", beacon_address.ip());
@@ -77,7 +77,8 @@ impl Beacon {
 
     pub async fn intercept_beacon(&mut self) -> Result<(), io::Error> {
         let mut buf = [0; BEACON_BUFFER_SIZE];
-        let mut tries = 1;
+        let mut parse_tries = 1;
+        let mut timeout_tries = 1;
 
         loop {
             match self.xp_multicast_beacon_socket.recv_from(&mut buf) {
@@ -92,35 +93,44 @@ impl Beacon {
                             return Ok(());
                         }
                         Err(e) => {
-                            if tries <= XP_MULTICAST_PARSE_MAX_TRIES {
+                            if parse_tries <= XP_MULTICAST_PARSE_MAX_TRIES {
                                 debug!("Error parsing beacon message: {}, retrying {}/{}",
-                                e, tries, XP_MULTICAST_PARSE_MAX_TRIES);
-                                tries += 1;
+                                e, parse_tries, XP_MULTICAST_PARSE_MAX_TRIES);
+                                parse_tries += 1;
                             } else {
                                 error!("Failed to parse beacon message after {} tries",
                                     XP_MULTICAST_PARSE_MAX_TRIES);
                                 return Err(io::Error::new(io::ErrorKind::InvalidData,
-                                                          "Failed to parse beacon message",
+                                                          "failed to parse beacon message",
                                 ));
                             }
                         }
                     }
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // No data available yet
-                    continue;
+                Err(ref e) if e.kind() == io::ErrorKind::TimedOut || e.kind() == io::ErrorKind::WouldBlock => {
+                    if timeout_tries <= XP_MULTICAST_TIMEOUT_MAX_TRIES {
+                        debug!("Timeout receiving beacon message, retrying {}/{}",
+                                timeout_tries, XP_MULTICAST_TIMEOUT_MAX_TRIES);
+                        timeout_tries += 1;
+                    } else {
+                        error!("Failed to receive beacon message after {} tries",
+                                    XP_MULTICAST_TIMEOUT_MAX_TRIES);
+                        return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                                  "failed to intercept X-Plane-beacon beacon",
+                        ));
+                    }
                 }
                 Err(e) => {
                     error!("Error receiving beacon messages: {}", e);
                     return Err(e);
                 }
             }
-            tokio::time::sleep(Duration::from_millis(XP_MULTICAST_RETRY_TIMEOUT_MS)).await;
         }
     }
 
     pub fn set_timeout(&mut self, timeout: u64) -> io::Result<()> {
         debug!("Setting beacon socket timeout to {} ms", timeout);
+        let timeout = timeout / XP_MULTICAST_TIMEOUT_MAX_TRIES as u64;
         self.xp_multicast_beacon_socket.set_read_timeout(Some(Duration::from_millis(timeout)))
     }
 
