@@ -23,5 +23,6 @@ pub const XP_DEFAULT_RECEIVING_PORT: u16 = 49000;
 pub const XP_DEFAULT_SENDING_PORT: u16 = 49001;
 
 // ─── Message constants ───────────────────────────────────────────────────────
+pub const STANDARD_BUFFER_SIZE: usize = 1024;
 pub const BEACON_PREFIX: &[u8; 4] = b"BECN";
-pub const BEACON_BUFFER_SIZE: usize = 1024;
+pub const RREF_PREFIX: &[u8; 4] = b"RREF";

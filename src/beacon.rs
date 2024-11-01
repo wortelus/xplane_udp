@@ -1,15 +1,15 @@
 use log::{error, info, debug};
 use std::io;
-use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use tokio::time::{self, Duration};
 
 use crate::consts::{XP_MULTICAST_ADDR, XP_MULTICAST_GRP,
-                    BEACON_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES,
+                    STANDARD_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES,
                     XP_MULTICAST_TIMEOUT_MAX_TRIES};
 use crate::beacon_data::BeaconData;
 
 pub struct Beacon {
-    data: BeaconData,
+    data: Option<BeaconData>,
     xp_multicast_address: SocketAddrV4,
     xp_multicast_beacon_socket: UdpSocket,
 }
@@ -19,7 +19,7 @@ impl Beacon {
         let socket = Self::init_beacon(XP_MULTICAST_ADDR)?;
 
         let mut beacon = Beacon {
-            data: BeaconData::default(),
+            data: None,
             xp_multicast_address: XP_MULTICAST_ADDR,
             xp_multicast_beacon_socket: socket,
         };
@@ -32,7 +32,7 @@ impl Beacon {
         let socket = Self::init_beacon(beacon_address)?;
 
         let mut beacon = Beacon {
-            data: BeaconData::default(),
+            data: None,
             xp_multicast_address: beacon_address,
             xp_multicast_beacon_socket: socket,
         };
@@ -76,19 +76,29 @@ impl Beacon {
     }
 
     pub async fn intercept_beacon(&mut self) -> Result<(), io::Error> {
-        let mut buf = [0; BEACON_BUFFER_SIZE];
+        let mut buf = [0; STANDARD_BUFFER_SIZE];
         let mut parse_tries = 1;
         let mut timeout_tries = 1;
 
         loop {
             match self.xp_multicast_beacon_socket.recv_from(&mut buf) {
                 Ok((.., src_addr)) => {
-                    match self.parse_beacon_message(buf) {
+                    match self.parse_beacon_message(buf, src_addr) {
                         Ok(_) => {
-                            info!("Intercepted beacon: from {} at {} running X-Plane {}",
-                                self.data.get_computer_name(),
-                                src_addr,
-                                self.data.get_version_number_string());
+                            match &self.data {
+                                Some(data) => {
+                                    info!("Intercepted beacon: from {} at {} running X-Plane {}",
+                                        data.get_computer_name(),
+                                        src_addr,
+                                        data.get_version_number_string());
+                                }
+                                None => {
+                                    error!("Failed to parse beacon message");
+                                    return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                                              "failed to parse beacon message",
+                                    ));
+                                }
+                            }
                             debug!("Beacon data: {:?}", self.data);
                             return Ok(());
                         }
@@ -134,12 +144,12 @@ impl Beacon {
         self.xp_multicast_beacon_socket.set_read_timeout(Some(Duration::from_millis(timeout)))
     }
 
-    fn parse_beacon_message(&mut self, msg: [u8; BEACON_BUFFER_SIZE]) -> Result<(), io::Error> {
-        let beacon = BeaconData::from_bytes(&msg)?;
-        self.data = beacon;
+    fn parse_beacon_message(&mut self, msg: [u8; STANDARD_BUFFER_SIZE], src_addr: SocketAddr) -> Result<(), io::Error> {
+        let beacon = BeaconData::from_bytes(&msg, src_addr)?;
+        self.data = Some(beacon);
         Ok(())
     }
 
-    pub fn get_beacon(&self) -> &BeaconData { &self.data }
+    pub fn get_beacon(&self) -> &Option<BeaconData> { &self.data }
     pub fn get_address(&self) -> SocketAddrV4 { self.xp_multicast_address }
 }

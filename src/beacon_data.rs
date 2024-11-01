@@ -1,10 +1,14 @@
 use std::fmt::Display;
 use std::io;
+use std::net::SocketAddr;
 use crate::consts::BEACON_PREFIX;
 use crate::utils::parse_message_data;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BeaconData {
+    /// Source address of the beacon message
+    source: SocketAddr,
+
     beacon_major_version: u8,
     beacon_minor_version: u8,
     application_host_id: i32,
@@ -14,26 +18,6 @@ pub struct BeaconData {
     computer_name: String,
 }
 
-impl Display for BeaconData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,
-               "Beacon {{ beacon_major_version: {}, \
-               beacon_minor_version: {}, \
-               application_host_id: {}, \
-               version_number: {}, \
-               role: {}, \
-               port: {}, \
-               computer_name: {} }}",
-               self.beacon_major_version,
-               self.beacon_minor_version,
-               self.application_host_id,
-               self.version_number,
-               self.role,
-               self.port,
-               self.computer_name)
-    }
-}
-
 impl BeaconData {
     pub fn new(beacon_major_version: u8,
                beacon_minor_version: u8,
@@ -41,7 +25,8 @@ impl BeaconData {
                version_number: i32,
                role: u32,
                port: u16,
-               computer_name: String) -> BeaconData {
+               computer_name: String,
+               source: SocketAddr) -> BeaconData {
         BeaconData {
             beacon_major_version,
             beacon_minor_version,
@@ -50,10 +35,11 @@ impl BeaconData {
             role,
             port,
             computer_name,
+            source
         }
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<BeaconData, io::Error> {
+    pub fn from_bytes(bytes: &[u8], src_addr: SocketAddr) -> Result<BeaconData, io::Error> {
         if bytes.len() < 21 {
             return Err(
                 io::Error::new(io::ErrorKind::InvalidData, "beacon message too short"),
@@ -80,6 +66,7 @@ impl BeaconData {
             role: u32::from_le_bytes(parse_message_data(&bytes[15..19])?),
             port: u16::from_le_bytes(parse_message_data(&bytes[19..21])?),
             computer_name: String::from_utf8_lossy(&bytes[21..end]).to_string(),
+            source: src_addr,
         })
     }
 
@@ -93,4 +80,5 @@ impl BeaconData {
     pub fn get_role(&self) -> u32 { self.role }
     pub fn get_port(&self) -> u16 { self.port }
     pub fn get_computer_name(&self) -> &str { &self.computer_name }
+    pub fn get_source(&self) -> &SocketAddr { &self.source }
 }
