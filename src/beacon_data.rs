@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::io;
 use crate::consts::BEACON_PREFIX;
-use crate::utils::slice_to_array;
+use crate::utils::parse_message_data;
 
 #[derive(Debug, Default)]
 pub struct BeaconData {
@@ -75,10 +75,10 @@ impl BeaconData {
         Ok(BeaconData {
             beacon_major_version: bytes[5],
             beacon_minor_version: bytes[6],
-            application_host_id: i32::from_le_bytes(slice_to_array(&bytes[7..11])?),
-            version_number: i32::from_le_bytes(slice_to_array(&bytes[11..15])?),
-            role: u32::from_le_bytes(slice_to_array(&bytes[15..19])?),
-            port: u16::from_le_bytes(slice_to_array(&bytes[19..21])?),
+            application_host_id: i32::from_le_bytes(parse_message_data(&bytes[7..11])?),
+            version_number: i32::from_le_bytes(parse_message_data(&bytes[11..15])?),
+            role: u32::from_le_bytes(parse_message_data(&bytes[15..19])?),
+            port: u16::from_le_bytes(parse_message_data(&bytes[19..21])?),
             computer_name: String::from_utf8_lossy(&bytes[21..end]).to_string(),
         })
     }

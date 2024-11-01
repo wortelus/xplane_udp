@@ -1,10 +1,11 @@
 use log::{error, info, debug};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
-use std::time::Duration;
+use tokio::time::{self, Duration};
 
 use crate::consts::{XP_MULTICAST_ADDR, XP_MULTICAST_GRP,
-                    BEACON_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES};
+                    BEACON_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES,
+                    XP_MULTICAST_RETRY_TIMEOUT_MS};
 use crate::beacon_data::BeaconData;
 
 pub struct Beacon {
@@ -17,21 +18,27 @@ impl Beacon {
     pub fn new() -> io::Result<Self> {
         let socket = Self::init_beacon(XP_MULTICAST_ADDR)?;
 
-        Ok(Beacon {
+        let mut beacon = Beacon {
             data: BeaconData::default(),
             xp_multicast_address: XP_MULTICAST_ADDR,
             xp_multicast_beacon_socket: socket,
-        })
+        };
+
+        beacon.set_timeout(XP_MULTICAST_RETRY_TIMEOUT_MS)?;
+        Ok(beacon)
     }
 
     pub fn new_with_address(beacon_address: SocketAddrV4) -> io::Result<Self> {
         let socket = Self::init_beacon(beacon_address)?;
 
-        Ok(Beacon {
+        let mut beacon = Beacon {
             data: BeaconData::default(),
             xp_multicast_address: beacon_address,
             xp_multicast_beacon_socket: socket,
-        })
+        };
+
+        beacon.set_timeout(XP_MULTICAST_RETRY_TIMEOUT_MS)?;
+        Ok(beacon)
     }
 
     fn init_beacon(beacon_address: SocketAddrV4) -> io::Result<UdpSocket> {
@@ -68,7 +75,7 @@ impl Beacon {
         Ok(())
     }
 
-    pub fn intercept_beacon(&mut self) -> Result<(), io::Error> {
+    pub async fn intercept_beacon(&mut self) -> Result<(), io::Error> {
         let mut buf = [0; BEACON_BUFFER_SIZE];
         let mut tries = 1;
 
@@ -81,6 +88,7 @@ impl Beacon {
                                 self.data.get_computer_name(),
                                 src_addr,
                                 self.data.get_version_number_string());
+                            debug!("Beacon data: {:?}", self.data);
                             return Ok(());
                         }
                         Err(e) => {
@@ -107,11 +115,13 @@ impl Beacon {
                     return Err(e);
                 }
             }
-
-            // Add a small delay to prevent 100% CPU usage
-            // TODO: Replace with something else
-            std::thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(XP_MULTICAST_RETRY_TIMEOUT_MS)).await;
         }
+    }
+
+    pub fn set_timeout(&mut self, timeout: u64) -> io::Result<()> {
+        debug!("Setting beacon socket timeout to {} ms", timeout);
+        self.xp_multicast_beacon_socket.set_read_timeout(Some(Duration::from_millis(timeout)))
     }
 
     fn parse_beacon_message(&mut self, msg: [u8; BEACON_BUFFER_SIZE]) -> Result<(), io::Error> {

@@ -11,6 +11,12 @@ pub const XP_MULTICAST_PORT: u16 = 49707;
 /// Default multicast address for X-Plane
 pub const XP_MULTICAST_ADDR: SocketAddrV4 = SocketAddrV4::new(XP_MULTICAST_GRP, XP_MULTICAST_PORT);
 
+/// Default multicast timeout in milliseconds before retrying to parse a message
+pub const XP_MULTICAST_RETRY_TIMEOUT_MS: u64 = 100;
+
+/// Default multicast timeout in milliseconds before giving up on a message
+pub const XP_MULTICAST_TIMEOUT_MS: u64 = 5000;
+
 /// Maximum tries to parse a multicast message
 pub const XP_MULTICAST_PARSE_MAX_TRIES: i32 = 3;
 

@@ -37,10 +37,11 @@ impl Session {
         })
     }
 
-    pub fn connect(&mut self) -> Result<(), io::Error> {
+    pub async fn connect(&mut self) -> Result<(), io::Error> {
         match self.beacon {
             Some(ref mut beacon) => {
                 beacon.connect_beacon()?;
+                beacon.intercept_beacon().await?;
             }
             None => {
                 debug!("Beacon not initialized, skipping multicast connection");
