@@ -59,8 +59,9 @@ impl DataRef {
         // 400s: 400 byte string
         // ref: https://xppython3.readthedocs.io/en/latest/development/udp/rref.html
         let name_len = self.name.len();
-        let len = 4 + 1 + 4 + 4 + name_len;
-        let total_len = 413;
+        let len = 4 + 1 + 4 + 4;
+        let max_name_len = 400;
+        let total_len = max_name_len + len;
         let mut message = vec![0; total_len];
 
         message[0..4].copy_from_slice(RREF_PREFIX);
