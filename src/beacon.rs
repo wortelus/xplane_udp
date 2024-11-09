@@ -1,8 +1,7 @@
 use log::{error, info, debug};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
-use tokio::time::{self, Duration};
-
+use std::time::Duration;
 use crate::consts::{XP_MULTICAST_ADDR, XP_MULTICAST_GRP,
                     STANDARD_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES,
                     XP_MULTICAST_TIMEOUT_MAX_TRIES};
@@ -140,7 +139,7 @@ impl Beacon {
 
     pub fn set_timeout(&mut self, timeout: u64) -> io::Result<()> {
         debug!("Setting beacon socket timeout to {} ms", timeout);
-        let timeout = timeout / XP_MULTICAST_TIMEOUT_MAX_TRIES as u64;
+        let timeout = timeout / (XP_MULTICAST_TIMEOUT_MAX_TRIES as u64 + 1);
         self.xp_multicast_beacon_socket.set_read_timeout(Some(Duration::from_millis(timeout)))
     }
 

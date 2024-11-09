@@ -1,7 +1,6 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 // ─── Multicast communication default values ────────────────────────────────────────
-
 /// Default multicast group for X-Plane
 pub const XP_MULTICAST_GRP: Ipv4Addr = Ipv4Addr::new(239, 255, 1, 1);
 
