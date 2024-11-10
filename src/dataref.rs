@@ -75,27 +75,9 @@ impl DataRef {
         message
     }
 
-    pub fn unsubscribe_message(&self) -> Vec<u8> {
-        // Python 3 struct.pack arg: '<4sxii400s'
-        // <: little-endian
-        // 4s: 4 byte string
-        // x: pad byte
-        // i: 4 byte int
-        // i: 4 byte int
-        // 400s: 400 byte string
-        // ref: https://xppython3.readthedocs.io/en/latest/development/udp/rref.html
-        let len = 4 + 1 + 4 + 4 + self.name.len() + 1; // + 1 for null terminator
-        let mut message = vec![0; len];
-
-        message[0..4].copy_from_slice(RREF_PREFIX);
-        // index is used to identify the dataref within the communication
-        message[5..9].copy_from_slice(&self.index.to_le_bytes());
-        // set frequency to 0 to unsubscribe
-        message[10..14].copy_from_slice(&0i32.to_le_bytes());
-        // dataref string
-        message[15..].copy_from_slice(self.name.as_bytes());
-
-        message
+    pub fn unsubscribe_message(&mut self) -> Vec<u8> {
+        self.freq = 0;
+        self.subscription_message()
     }
 
     pub fn get_name(&self) -> &str { &self.name }
