@@ -6,6 +6,14 @@ use log::{debug, error, info};
 
 use crate::consts::RREF_PREFIX;
 use crate::dataref::{DataRef, DataRefType, DataRefValueType};
+use crate::subscriber::MessageStatus::InvalidData;
+
+enum MessageStatus<T> {
+    Ok(T),
+    WrongPrefix,
+    InvalidLength,
+    InvalidData,
+}
 
 pub struct DataRefHandler {
     index_counter: i32,
@@ -18,19 +26,11 @@ impl DataRefHandler {
         DataRefHandler {
             index_counter: 1,
             id_datarefs: Arc::new(DashMap::new()),
-            name_id_map: DashMap::new()
+            name_id_map: DashMap::new(),
         }
     }
 
-    pub fn should_process(data: &[u8; 4096]) -> bool {
-        // match data[0..4] {
-        //     RREF_PREFIX => true,
-        //     _ => false,
-        // }
-        data.starts_with(RREF_PREFIX)
-    }
-
-    pub fn process_message(map: &mut Arc<DashMap<i32, DataRef>>, data: &[u8]) -> bool {
+    pub fn should_process(data: &[u8]) -> MessageStatus<usize> {
         // Python 3 struct.pack arg: '<4xsif'
         // <: little-endian
         // 4x: 4 bytes padding
@@ -38,20 +38,39 @@ impl DataRefHandler {
         // i: 4 byte int
         // f: 4 byte float
         // ref: https://xppython3.readthedocs.io/en/latest/development/udp/rref.html
+
         if data.len() < 13 {
-            return false;
+            return MessageStatus::InvalidLength;
         }
 
         if !data.starts_with(RREF_PREFIX) {
-            return false;
+            return MessageStatus::WrongPrefix;
         }
 
-        let index = i32::from_le_bytes(data[5..9].try_into().unwrap());
-        let value = f32::from_le_bytes(data[9..13].try_into().unwrap());
+        let len_no_prefix = data.len() - 5;
+        match len_no_prefix % 8 {
+            0 => MessageStatus::Ok(len_no_prefix / 8),
+            _ => InvalidData,
+        }
+    }
 
-        map.entry(index).and_modify(|e| e.update(value));
+    pub fn process_message(map: &mut Arc<DashMap<i32, DataRef>>, data: &[u8]) -> MessageStatus<usize> {
+        let vars_count: usize = match DataRefHandler::should_process(data) {
+            MessageStatus::Ok(e) => e,
+            other => return other,
+        };
 
-        true
+        for i in 0..vars_count {
+            let i_index = 5 + i * 8;
+            let v_index = i_index + 4;
+
+            let index = i32::from_le_bytes(data[i_index..v_index].try_into().unwrap());
+            let value = f32::from_le_bytes(data[v_index..v_index + 4].try_into().unwrap());
+
+            map.entry(index).and_modify(|e| e.update(value));
+        }
+
+        MessageStatus::Ok(vars_count)
     }
 
     pub fn spawn_run_thread(&self, receiving_socket: Arc<UdpSocket>) {
@@ -59,22 +78,23 @@ impl DataRefHandler {
         let mut datarefs = self.id_datarefs.clone();
         thread::spawn(move || {
             let mut buffer = [0; 4096];
-            // TODO: remove
-            // debug!("{:?}", receiving_socket.local_addr());
-            // debug!("{:?}", receiving_socket.peer_addr().unwrap());
-            // debug!("{:?}", receiving_socket.recv(&mut buffer).unwrap());
             loop {
                 match receiving_socket.recv(&mut buffer) {
                     Ok(received) => {
-                        if !DataRefHandler::should_process(&buffer) {
-                            continue;
-                        }
-
                         debug!("Received RREF message with {} bytes", received);
-                        if !DataRefHandler::process_message(&mut datarefs, &buffer[..received]) {
-                            error!("Failed to process RREF message");
-                            debug!("Received data: {:?}", &buffer[..received]);
-                            continue;
+                        match DataRefHandler::process_message(&mut datarefs, &buffer[..received]) {
+                            MessageStatus::Ok(e) => {
+                                continue;
+                            }
+                            MessageStatus::WrongPrefix => {
+                                debug!("Received non-RREF data.");
+                                continue;
+                            }
+                            MessageStatus::InvalidData | MessageStatus::InvalidLength => {
+                                error!("Failed to process RREF message");
+                                debug!("Received data: {:?}", &buffer[..received]);
+                                continue;
+                            }
                         }
                     }
                     Err(e) => {
@@ -107,13 +127,26 @@ impl DataRefHandler {
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "Dataref not found")),
         };
 
-        let (_, dataref) = match self.id_datarefs.remove(&index) {
+        let (_, mut dataref) = match self.id_datarefs.remove(&index) {
             Some(e) => e,
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "Dataref not found")),
         };
 
         let message = dataref.unsubscribe_message();
         sending_socket.send_to(message.as_slice(), receiving_address)?;
+
+        Ok(())
+    }
+
+    pub fn unsubscribe_all(&mut self, sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
+        let keys: Vec<String> = self.name_id_map.iter().map(|e| e.key().clone()).collect();
+        for name in keys {
+            self.unsubscribe(name.as_str(), sending_socket, receiving_address)?;
+        }
+
+
+        self.id_datarefs.clear();
+        self.name_id_map.clear();
 
         Ok(())
     }

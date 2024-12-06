@@ -2,6 +2,7 @@ use log::{error, info, debug};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::time::Duration;
+
 use crate::consts::{XP_MULTICAST_ADDR, XP_MULTICAST_GRP,
                     STANDARD_BUFFER_SIZE, XP_MULTICAST_PARSE_MAX_TRIES,
                     XP_MULTICAST_TIMEOUT_MAX_TRIES};
@@ -74,7 +75,7 @@ impl Beacon {
         Ok(())
     }
 
-    pub async fn intercept_beacon(&mut self) -> Result<(), io::Error> {
+    pub fn intercept_beacon(&mut self) -> Result<(), io::Error> {
         let mut buf = [0; STANDARD_BUFFER_SIZE];
         let mut parse_tries = 1;
         let mut timeout_tries = 1;

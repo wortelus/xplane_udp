@@ -199,7 +199,34 @@ impl Session {
         }
     }
 
+    pub fn unsubscribe_all(&mut self) -> io::Result<()> {
+        match self.xp_receiving_address {
+            Some(addr) => {
+                self.dataref_handler.unsubscribe_all(&self.xp_sending_socket, &addr)
+            },
+            None => {
+                error!("Cannot unsubscribe from datarefs without connecting to X-Plane first");
+                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
+            }
+        }
+    }
+
     pub fn get_dataref(&self, dataref: &str) -> Option<DataRefValueType> {
         self.dataref_handler.get_dataref(dataref)
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        if let Some(ref beacon) = self.beacon {
+            // Close beacon, if it exists
+            let _ = beacon.close_beacon();
+
+            // Unsubscribe from all datarefs
+            // This tells X-Plane to actually stop sending data
+            self.unsubscribe_all().unwrap();
+
+            info!("Session dropped");
+        }
     }
 }
