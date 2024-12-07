@@ -5,10 +5,11 @@ use dashmap::DashMap;
 use log::{debug, error, info};
 
 use crate::consts::RREF_PREFIX;
-use crate::dataref::{DataRef, DataRefType, DataRefValueType};
-use crate::subscriber::MessageStatus::InvalidData;
+use crate::dataref::DataRef;
+use crate::dataref_type::{DataRefType, DataRefValueType};
+use crate::dataref_handler::MessageStatus::InvalidData;
 
-enum MessageStatus<T> {
+pub enum MessageStatus<T> {
     Ok(T),
     WrongPrefix,
     InvalidLength,
@@ -81,13 +82,13 @@ impl DataRefHandler {
             loop {
                 match receiving_socket.recv(&mut buffer) {
                     Ok(received) => {
-                        debug!("Received RREF message with {} bytes", received);
                         match DataRefHandler::process_message(&mut datarefs, &buffer[..received]) {
-                            MessageStatus::Ok(e) => {
+                            MessageStatus::Ok(count) => {
+                                debug!("Processed RREF message with {} bytes and {} dataref updates", received, count);
                                 continue;
                             }
                             MessageStatus::WrongPrefix => {
-                                debug!("Received non-RREF data.");
+                                debug!("Received non-RREF data");
                                 continue;
                             }
                             MessageStatus::InvalidData | MessageStatus::InvalidLength => {

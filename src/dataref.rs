@@ -1,16 +1,5 @@
 use crate::consts::RREF_PREFIX;
-
-pub enum DataRefType {
-    Float,
-    Int,
-    Char,
-}
-
-pub enum DataRefValueType {
-    Float(f32),
-    Int(i32),
-    Char(char),
-}
+use crate::dataref_type::{DataRefType, DataRefValueType};
 
 pub struct DataRef {
     name: String,

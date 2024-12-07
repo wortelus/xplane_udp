@@ -5,8 +5,9 @@ use log::{debug, error, info};
 
 use crate::consts::XP_DEFAULT_SENDING_PORT;
 use crate::beacon::Beacon;
-use crate::dataref::{DataRefType, DataRefValueType};
-use crate::subscriber::DataRefHandler;
+use crate::command_handler::CommandHandler;
+use crate::dataref_type::{DataRefType, DataRefValueType};
+use crate::dataref_handler::DataRefHandler;
 
 pub struct Session {
     beacon: Option<Beacon>,
@@ -17,6 +18,7 @@ pub struct Session {
     xp_sending_socket: Arc<UdpSocket>,
 
     dataref_handler: DataRefHandler,
+    command_handler: CommandHandler,
 }
 
 impl Session {
@@ -42,6 +44,7 @@ impl Session {
             xp_sending_address: None,
             xp_sending_socket: Arc::new(xp_sending_socket),
             dataref_handler: DataRefHandler::new(),
+            command_handler: CommandHandler::new(),
         })
     }
 
@@ -70,6 +73,7 @@ impl Session {
             xp_sending_address: Some(xp_sending_address),
             xp_sending_socket: Arc::new(xp_sending_socket),
             dataref_handler: DataRefHandler::new(),
+            command_handler: CommandHandler::new(),
         })
     }
 
@@ -96,6 +100,7 @@ impl Session {
             xp_sending_address: Some(xp_sending_address),
             xp_sending_socket: Arc::new(xp_sending_socket),
             dataref_handler: DataRefHandler::new(),
+            command_handler: CommandHandler::new(),
         })
     }
 
@@ -206,6 +211,18 @@ impl Session {
             },
             None => {
                 error!("Cannot unsubscribe from datarefs without connecting to X-Plane first");
+                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
+            }
+        }
+    }
+
+    pub fn cmd(&self, command: &str) -> io::Result<()> {
+        match self.xp_receiving_address {
+            Some(addr) => {
+                self.command_handler.send_command(command, &self.xp_sending_socket, &addr)
+            },
+            None => {
+                error!("Cannot send command without connecting to X-Plane first");
                 Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
             }
         }
