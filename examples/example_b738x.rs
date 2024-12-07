@@ -52,7 +52,9 @@ fn main() {
         }
     }
 
-    loop {
+    let loop_count = 10;
+
+    for _ in 0..loop_count {
         let num_engines = session.get_dataref("sim/aircraft/engine/acf_num_engines");
         match num_engines {
             Some(DataRefValueType::Int(num_engines)) => {
@@ -63,7 +65,6 @@ fn main() {
             }
         }
         let dome = session.get_dataref("laminar/B738/toggle_switch/cockpit_dome_pos");
-        info!("Dome: {:?}", dome);
         match dome {
             Some(DataRefValueType::Int(dome)) => {
                 match dome {
@@ -79,11 +80,17 @@ fn main() {
                         session.cmd("laminar/B738/toggle_switch/cockpit_dome_dn").unwrap();
                         info!("Dome: {:?}", dome);
                     },
-                    _ => { }
+                    _ => {
+                        info!("Unknown dome value: {:?}", dome);
+                    }
                 }
             },
-            _ => { }
+            _ => {
+                error!("Failed to get dome position");
+            }
         }
         sleep(std::time::Duration::from_secs(1));
     }
+
+    info!("Shutting down")
 }

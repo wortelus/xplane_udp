@@ -7,7 +7,7 @@ pub struct DataRef {
     freq: i32,
 
     value_type: DataRefType,
-    raw: f32,
+    raw: Option<f32>,
 }
 
 impl DataRef {
@@ -18,24 +18,28 @@ impl DataRef {
             index,
             value_type,
             freq: frequency,
-            raw: 0.0,
+            raw: None,
         }
     }
 
-    pub fn get_raw(&self) -> f32 {
+    pub fn get_raw(&self) -> Option<f32> {
         self.raw
     }
 
     pub fn get(&self) -> DataRefValueType {
+        let val: f32 = match self.raw {
+            None => return DataRefValueType::Unknown,
+            Some(v) => v
+        };
         match self.value_type {
-            DataRefType::Float => DataRefValueType::Float(self.raw),
-            DataRefType::Int => DataRefValueType::Int(self.raw as i32),
-            DataRefType::Char => DataRefValueType::Char(self.raw as u8 as char),
+            DataRefType::Float => DataRefValueType::Float(val),
+            DataRefType::Int => DataRefValueType::Int(val as i32),
+            DataRefType::Char => DataRefValueType::Char(val as u8 as char),
         }
     }
 
     pub fn update(&mut self, value: f32) {
-        self.raw = value;
+        self.raw = Some(value);
     }
 
     pub fn subscription_message(&self) -> Vec<u8> {

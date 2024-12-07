@@ -238,12 +238,12 @@ impl Drop for Session {
         if let Some(ref beacon) = self.beacon {
             // Close beacon, if it exists
             let _ = beacon.close_beacon();
-
-            // Unsubscribe from all datarefs
-            // This tells X-Plane to actually stop sending data
-            self.unsubscribe_all().unwrap();
-
-            info!("Session dropped");
         }
+
+        // Unsubscribe from all datarefs
+        // This tells X-Plane to actually stop sending data
+        self.unsubscribe_all().unwrap();
+
+        info!("Session dropped");
     }
 }

@@ -84,7 +84,7 @@ impl DataRefHandler {
                     Ok(received) => {
                         match DataRefHandler::process_message(&mut datarefs, &buffer[..received]) {
                             MessageStatus::Ok(count) => {
-                                debug!("Processed RREF message with {} bytes and {} dataref updates", received, count);
+                                debug!("Processed RREF message with {} bytes ({} dataref updates)", received, count);
                                 continue;
                             }
                             MessageStatus::WrongPrefix => {

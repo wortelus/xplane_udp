@@ -8,6 +8,7 @@ pub enum DataRefValueType {
     Float(f32),
     Int(i32),
     Char(char),
+    Unknown,
 }
 
 impl PartialEq for DataRefValueType {
@@ -16,6 +17,7 @@ impl PartialEq for DataRefValueType {
             (DataRefValueType::Float(a), DataRefValueType::Float(b)) => a == b,
             (DataRefValueType::Int(a), DataRefValueType::Int(b)) => a == b,
             (DataRefValueType::Char(a), DataRefValueType::Char(b)) => a == b,
+            (DataRefValueType::Unknown, DataRefValueType::Unknown) => true,
             _ => false,
         }
     }
@@ -29,6 +31,7 @@ impl std::fmt::Debug for DataRefValueType {
             DataRefValueType::Float(v) => write!(f, "Float({})", v),
             DataRefValueType::Int(v) => write!(f, "Int({})", v),
             DataRefValueType::Char(v) => write!(f, "Char({})", v),
+            DataRefValueType::Unknown => write!(f, "Unknown"),
         }
     }
 }
