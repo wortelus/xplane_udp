@@ -25,5 +25,5 @@ pub const XP_DEFAULT_SENDING_PORT: u16 = 49001;
 pub const STANDARD_BUFFER_SIZE: usize = 1024;
 pub const BEACON_PREFIX: &[u8; 4] = b"BECN";
 pub const RREF_PREFIX: &[u8; 4] = b"RREF";
-
 pub const CMND_PREFIX: &[u8; 4] = b"CMND";
+pub const ALRT_PREFIX: &[u8; 4] = b"ALRT";

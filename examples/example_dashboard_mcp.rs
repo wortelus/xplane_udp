@@ -1,3 +1,4 @@
+use std::fmt::format;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::style::{Color};
@@ -7,6 +8,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use crossterm::event;
 use crossterm::event::{poll, KeyCode, KeyEventKind};
+use xplane_udp::command_handler::AlertMessage;
 use xplane_udp::session::Session;
 
 mod consts_b738x;
@@ -27,6 +29,32 @@ fn display_pg(value: &str) -> Paragraph {
     ]).alignment(Alignment::Center).block(Block::default().borders(Borders::NONE))
 }
 
+fn execute_command(command: &str, session: &Session) -> io::Result<bool> {
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    let cmd = parts[0];
+
+    if cmd == "quit" {
+        return Ok(true);
+    }
+    else if cmd == "alert" {
+        let mut alert = AlertMessage::default();
+        let msg = parts[1..].join(" ");
+
+        alert.set_line("Wortelus says", 0)?;
+        alert.set_line(&msg, 1)?;
+        session.alert(alert)?;
+    } else if cmd.starts_with("cmd") {
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
+        if parts.len() != 2 {
+            return Ok(false);
+        }
+        session.cmd(parts[1])?;
+    }
+
+    Ok(false)
+}
+
+
 fn main() -> io::Result<()> {
     // let mut session = Session::auto_discover_default(10000)?;
     let mut session = Session::manual(
@@ -43,15 +71,23 @@ fn main() -> io::Result<()> {
             Digits => xplane_udp::dataref_type::DataRefType::Int,
             Gb => xplane_udp::dataref_type::DataRefType::Int,
         };
-        session.subscribe(&field.dataref, 1, dr_type)?;
+        session.subscribe(&field.dataref, 5, dr_type)?;
     }
 
-
+    let mut command_buffer = String::new();
     let mut terminal = ratatui::init();
+
     loop {
         terminal.draw(|f| {
             let size = f.area();
 
+            // Outer block with title and border
+            let outer_block = Block::default()
+                .title("Boeing 737 NG MCP")
+                .borders(Borders::ALL);
+            f.render_widget(&outer_block, size);
+
+            let inner_area = outer_block.inner(size);
             let main_layout = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -60,7 +96,7 @@ fn main() -> io::Result<()> {
                     Constraint::Min(1),    // Remaining space
                     Constraint::Length(3), // Command row
                 ])
-                .split(size);
+                .split(inner_area);
 
             // Top row layout (A fields)
             let a_blocks = Layout::default()
@@ -83,7 +119,7 @@ fn main() -> io::Result<()> {
 
                 let display = &field.field_type;
                 match display {
-                    Digits => f.render_widget(display_pg(newest_value.to_string().as_str()), *block),
+                    Digits => f.render_widget(display_pg(&newest_value.to_string()), *block),
                     Gb => f.render_widget(button_pg(field.name, newest_value == 1), *block),
                 }
             }
@@ -97,16 +133,41 @@ fn main() -> io::Result<()> {
 
                 let display = &field.field_type;
                 match display {
-                    Digits => f.render_widget(display_pg(newest_value.to_string().as_str()), *block),
+                    Digits => f.render_widget(display_pg(&newest_value.to_string()), *block),
                     Gb => f.render_widget(button_pg(field.name, newest_value == 1), *block),
                 }
             }
+
+            // Command box
+            let command_box = Paragraph::new(format!(">{}", command_buffer))
+                .alignment(Alignment::Left)
+                .block(Block::default().borders(Borders::NONE).title("Command"));
+            f.render_widget(command_box, main_layout[3]);
         })?;
 
-        if poll(Duration::from_millis(100)).unwrap() {
-            if let event::Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                    break;
+        if poll(Duration::from_millis(100))? {
+            if let event::Event::Key(key) = crossterm::event::read()? {
+                match key.code {
+                    KeyCode::Char('q') => {
+                        break;
+                    }
+                    KeyCode::Char(ch) => {
+                        // Append typed character to command buffer
+                        command_buffer.push(ch);
+                    }
+                    KeyCode::Backspace => {
+                        // Remove last character if exists
+                        command_buffer.pop();
+                    }
+                    KeyCode::Enter => {
+                        // Execute the command and clear the buffer
+                        match execute_command(&command_buffer, &session) {
+                            Ok(true) => break,
+                            _ => {}
+                        }
+                        command_buffer.clear();
+                    }
+                    _ => {}
                 }
             }
         }

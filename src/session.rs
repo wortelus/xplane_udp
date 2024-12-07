@@ -5,7 +5,7 @@ use log::{debug, error, info};
 
 use crate::consts::XP_DEFAULT_SENDING_PORT;
 use crate::beacon::Beacon;
-use crate::command_handler::CommandHandler;
+use crate::command_handler::{AlertMessage, CommandHandler};
 use crate::dataref_type::{DataRefType, DataRefValueType};
 use crate::dataref_handler::DataRefHandler;
 
@@ -223,6 +223,18 @@ impl Session {
             },
             None => {
                 error!("Cannot send command without connecting to X-Plane first");
+                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
+            }
+        }
+    }
+
+    pub fn alert(&self, message: AlertMessage) -> io::Result<()> {
+        match self.xp_receiving_address {
+            Some(addr) => {
+                self.command_handler.alert(message, &self.xp_sending_socket, &addr)
+            },
+            None => {
+                error!("Cannot send alert without connecting to X-Plane first");
                 Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
             }
         }
