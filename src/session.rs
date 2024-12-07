@@ -242,7 +242,9 @@ impl Drop for Session {
 
         // Unsubscribe from all datarefs
         // This tells X-Plane to actually stop sending data
-        self.unsubscribe_all().unwrap();
+        if let Err(e) = self.unsubscribe_all() {
+            error!("Failed to unsubscribe from all datarefs: {}", e);
+        }
 
         info!("Session dropped");
     }

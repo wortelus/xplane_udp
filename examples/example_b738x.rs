@@ -9,12 +9,15 @@ use xplane_udp::session::Session;
 fn main() {
     env_logger::init();
     // let session = Session::auto_discover_default(10000);
-    let session = Session::manual(SocketAddr::from(([10, 0, 0, 10], 49000)),
-                                   SocketAddr::from(([10, 0, 0, 10], 49001)));
+    let session = Session::manual(
+        SocketAddr::from(([10, 0, 0, 10], 49000)),
+        SocketAddr::from(([10, 0, 0, 10], 49001)),
+    );
+
     let mut session = match session {
         Ok(session) => {
             session
-        },
+        }
         Err(e) => {
             error!("Failed to auto-discover X-Plane: {}", e);
             return;
@@ -25,7 +28,7 @@ fn main() {
     let _ = match session.connect() {
         Ok(conn) => {
             conn
-        },
+        }
         Err(e) => {
             error!("Failed to connect to X-Plane: {}", e);
             return;
@@ -37,7 +40,7 @@ fn main() {
     match session.subscribe("sim/aircraft/engine/acf_num_engines", 1, DataRefType::Int) {
         Ok(_) => {
             info!("Subscribed to sim/aircraft/engine/acf_num_engines");
-        },
+        }
         Err(e) => {
             error!("Failed to subscribe to sim/aircraft/engine/acf_num_engines: {}", e);
         }
@@ -46,7 +49,7 @@ fn main() {
     match session.subscribe("laminar/B738/toggle_switch/cockpit_dome_pos", 1, DataRefType::Int) {
         Ok(_) => {
             info!("Subscribed to laminar/B738/toggle_switch/cockpit_dome_pos");
-        },
+        }
         Err(e) => {
             error!("Failed to subscribe to laminar/B738/toggle_switch/cockpit_dome_pos: {}", e);
         }
@@ -59,7 +62,7 @@ fn main() {
         match num_engines {
             Some(DataRefValueType::Int(num_engines)) => {
                 info!("Number of engines: {}", num_engines);
-            },
+            }
             _ => {
                 error!("Failed to get number of engines");
             }
@@ -71,20 +74,20 @@ fn main() {
                     -1 => {
                         session.cmd("laminar/B738/toggle_switch/cockpit_dome_up").unwrap();
                         info!("Dome: {:?}", dome);
-                    },
+                    }
                     0 => {
                         session.cmd("laminar/B738/toggle_switch/cockpit_dome_up").unwrap();
                         info!("Dome: {:?}", dome);
-                    },
+                    }
                     1 => {
                         session.cmd("laminar/B738/toggle_switch/cockpit_dome_dn").unwrap();
                         info!("Dome: {:?}", dome);
-                    },
+                    }
                     _ => {
                         info!("Unknown dome value: {:?}", dome);
                     }
                 }
-            },
+            }
             _ => {
                 error!("Failed to get dome position");
             }
