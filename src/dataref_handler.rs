@@ -22,6 +22,12 @@ pub struct DataRefHandler {
     name_id_map: DashMap<String, i32>,
 }
 
+impl Default for DataRefHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DataRefHandler {
     pub fn new() -> Self {
         DataRefHandler {

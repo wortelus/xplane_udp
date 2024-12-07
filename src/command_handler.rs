@@ -25,13 +25,10 @@ impl AlertMessage {
     }
 }
 
+#[derive(Default)]
 pub struct CommandHandler {}
 
 impl CommandHandler {
-    pub fn new() -> CommandHandler {
-        CommandHandler {}
-    }
-
     fn cmd_message(&self, command: &str) -> String {
         format!("CMND\0{}\0", command)
     }

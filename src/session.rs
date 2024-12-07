@@ -43,8 +43,8 @@ impl Session {
             xp_receiving_socket: Arc::new(xp_receiving_socket),
             xp_sending_address: None,
             xp_sending_socket: Arc::new(xp_sending_socket),
-            dataref_handler: DataRefHandler::new(),
-            command_handler: CommandHandler::new(),
+            dataref_handler: DataRefHandler::default(),
+            command_handler: CommandHandler::default(),
         })
     }
 
@@ -72,8 +72,8 @@ impl Session {
             xp_receiving_socket: Arc::new(xp_receiving_socket),
             xp_sending_address: Some(xp_sending_address),
             xp_sending_socket: Arc::new(xp_sending_socket),
-            dataref_handler: DataRefHandler::new(),
-            command_handler: CommandHandler::new(),
+            dataref_handler: DataRefHandler::default(),
+            command_handler: CommandHandler::default(),
         })
     }
 
@@ -99,8 +99,8 @@ impl Session {
             xp_receiving_socket: Arc::new(xp_receiving_socket),
             xp_sending_address: Some(xp_sending_address),
             xp_sending_socket: Arc::new(xp_sending_socket),
-            dataref_handler: DataRefHandler::new(),
-            command_handler: CommandHandler::new(),
+            dataref_handler: DataRefHandler::default(),
+            command_handler: CommandHandler::default(),
         })
     }
 

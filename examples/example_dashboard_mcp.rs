@@ -1,4 +1,3 @@
-use std::fmt::format;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::style::{Color};
@@ -7,7 +6,8 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 use crossterm::event;
-use crossterm::event::{poll, KeyCode, KeyEventKind};
+use crossterm::event::{poll, KeyCode};
+use ratatui::{init, restore};
 use xplane_udp::command_handler::AlertMessage;
 use xplane_udp::session::Session;
 
@@ -40,7 +40,7 @@ fn execute_command(command: &str, session: &Session) -> io::Result<bool> {
         let mut alert = AlertMessage::default();
         let msg = parts[1..].join(" ");
 
-        alert.set_line("Wortelus says", 0)?;
+        alert.set_line("wortelus from xplane_udp is saying...", 0)?;
         alert.set_line(&msg, 1)?;
         session.alert(alert)?;
     } else if cmd.starts_with("cmd") {
@@ -75,7 +75,7 @@ fn main() -> io::Result<()> {
     }
 
     let mut command_buffer = String::new();
-    let mut terminal = ratatui::init();
+    let mut terminal = init();
 
     loop {
         terminal.draw(|f| {
@@ -173,6 +173,6 @@ fn main() -> io::Result<()> {
         }
     }
 
-    ratatui::restore();
+    restore();
     Ok(())
 }
