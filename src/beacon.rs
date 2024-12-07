@@ -59,7 +59,10 @@ impl Beacon {
         self.xp_multicast_beacon_socket.leave_multicast_v4(
             &XP_MULTICAST_GRP,
             &Ipv4Addr::UNSPECIFIED,
-        )
+        )?;
+
+        debug!("Left X-Plane multicast group: {}", self.xp_multicast_address);
+        Ok(())
     }
 
     pub fn connect_beacon(&mut self) -> io::Result<()> {
