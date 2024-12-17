@@ -1,20 +1,22 @@
 use std::io;
-use std::net::{SocketAddr, SocketAddrV4, UdpSocket};
+use std::io::Error;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::Arc;
 use log::{debug, error, info};
 
 use crate::consts::XP_DEFAULT_SENDING_PORT;
 use crate::beacon::Beacon;
+use crate::auto_discover::AutoDiscover;
 use crate::command_handler::{AlertMessage, CommandHandler};
 use crate::dataref_type::{DataRefType, DataRefValueType};
 use crate::dataref_handler::DataRefHandler;
 
 pub struct Session {
     beacon: Option<Beacon>,
-    xp_receiving_address: Option<SocketAddr>,
+    xp_receiving_address: SocketAddr,
     xp_receiving_socket: Arc<UdpSocket>,
 
-    xp_sending_address: Option<SocketAddr>,
+    xp_sending_address: SocketAddr,
     xp_sending_socket: Arc<UdpSocket>,
 
     dataref_handler: DataRefHandler,
@@ -22,71 +24,16 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn auto_discover_default(timeout: u64) -> Result<Self, io::Error> {
-        let xp_receiving_socket = UdpSocket::bind("0.0.0.0:0")
-            .map_err(|e| {
-                error!("Failed to bind to receiving socket: {}", e);
-                e
-            })?;
-        debug!("Receiving socket bound to {}", xp_receiving_socket.local_addr()?);
-
-        let xp_sending_socket = UdpSocket::bind("0.0.0.0:0")
-            .map_err(|e| {
-                error!("Failed to bind to sending socket: {}", e);
-                e
-            })?;
-        debug!("Sending socket bound to {}", xp_sending_socket.local_addr()?);
-
-        Ok(Session {
-            beacon: Some(Beacon::new(timeout)?),
-            xp_receiving_address: None,
-            xp_receiving_socket: Arc::new(xp_receiving_socket),
-            xp_sending_address: None,
-            xp_sending_socket: Arc::new(xp_sending_socket),
-            dataref_handler: DataRefHandler::default(),
-            command_handler: CommandHandler::default(),
-        })
-    }
-
-    pub fn auto_discover(beacon_addr: SocketAddrV4,
-                         xp_receiving_address: SocketAddr,
-                         xp_sending_address: SocketAddr,
-                         timeout: u64) -> Result<Self, io::Error> {
-        let xp_receiving_socket = UdpSocket::bind("0.0.0.0:0")
-            .map_err(|e| {
-                error!("Failed to bind to receiving socket: {}", e);
-                e
-            })?;
-        debug!("Receiving socket bound to {}", xp_receiving_socket.local_addr()?);
-
-        let xp_sending_socket = UdpSocket::bind("0.0.0.0:0")
-            .map_err(|e| {
-                error!("Failed to bind to sending socket: {}", e);
-                e
-            })?;
-        debug!("Sending socket bound to {}", xp_sending_socket.local_addr()?);
-
-        Ok(Session {
-            beacon: Some(Beacon::new_with_address(beacon_addr, timeout)?),
-            xp_receiving_address: Some(xp_receiving_address),
-            xp_receiving_socket: Arc::new(xp_receiving_socket),
-            xp_sending_address: Some(xp_sending_address),
-            xp_sending_socket: Arc::new(xp_sending_socket),
-            dataref_handler: DataRefHandler::default(),
-            command_handler: CommandHandler::default(),
-        })
-    }
-
     pub fn manual(xp_receiving_address: SocketAddr,
-                  xp_sending_address: SocketAddr) -> Result<Self, io::Error> {
-        let xp_receiving_socket = UdpSocket::bind("0.0.0.0:0")
+                  xp_sending_address: SocketAddr) -> io::Result<Self> {
+        let xp_receiving_socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
             .map_err(|e| {
                 error!("Failed to bind to receiving socket: {}", e);
                 e
             })?;
         debug!("Receiving socket bound to {}", xp_receiving_socket.local_addr()?);
 
-        let xp_sending_socket = UdpSocket::bind("0.0.0.0:0")
+        let xp_sending_socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
             .map_err(|e| {
                 error!("Failed to bind to sending socket: {}", e);
                 e
@@ -95,77 +42,91 @@ impl Session {
 
         Ok(Session {
             beacon: None,
-            xp_receiving_address: Some(xp_receiving_address),
+            xp_receiving_address,
             xp_receiving_socket: Arc::new(xp_receiving_socket),
-            xp_sending_address: Some(xp_sending_address),
+            xp_sending_address,
             xp_sending_socket: Arc::new(xp_sending_socket),
             dataref_handler: DataRefHandler::default(),
             command_handler: CommandHandler::default(),
         })
     }
 
-    pub fn connect(&mut self) -> Result<(), io::Error> {
-        match (self.xp_receiving_address, self.xp_sending_address) {
-            // Both receiving and sending addresses provided
-            // Connect to X-Plane directly
-            (Some(receiving), Some(sending)) => {
-                self.connect_xp(receiving, sending)?;
-            },
-            // Addresses not provided
-            // Infer X-Plane addresses from beacon data
-            _ => {
-                match self.beacon {
-                    Some(ref mut beacon) => {
-                        // Connect to X-Plane multicast group
-                        beacon.connect_beacon()?;
-                        beacon.intercept_beacon()?;
-                        beacon.close_beacon()?;
+    pub async fn intercept_beacon(mut auto_discover: AutoDiscover) -> Result<Session, (Error, AutoDiscover)> {
+        let beacon = auto_discover.get_beacon_mut();
 
-                        // Get beacon data
-                        debug!("No X-Plane address provided, auto-discovering from beacon...");
-                        let beacon_data = match beacon.get_beacon() {
-                            Some(data) => data,
-                            None => {
-                                error!("No beacon data available, cannot auto-discover X-Plane");
-                                return Err(io::Error::new(io::ErrorKind::NotFound, "No beacon data available"));
-                            }
-                        };
+        // Intercept beacon
+        if let Err(err) = beacon.intercept_beacon().await {
+            return Err((err, auto_discover));
+        }
 
-                        // Receiving address of X-Plane
-                        let receiving = SocketAddr::new(
-                            beacon_data.get_source().ip(),
-                            beacon_data.get_port(),
-                        );
-                        debug!("Assuming X-Plane receiving address is {} from beacon", receiving);
+        // Close beacon
+        if let Err(err) = beacon.close_beacon().await {
+            return Err((err, auto_discover));
+        }
 
-                        // Sending address of X-Plane
-                        let sending = SocketAddr::new(
-                            beacon_data.get_source().ip(),
-                            XP_DEFAULT_SENDING_PORT,
-                        );
-                        info!("Assuming X-Plane sending address is {}. \
-                        This should work if network settings were not overridden in the simulator.", sending);
-
-                        // Connect to X-Plane
-                        self.connect_xp(receiving, sending)?;
-                    },
-                    None => {
-                        error!("No beacon data available, cannot auto-discover X-Plane");
-                        return Err(io::Error::new(io::ErrorKind::NotFound, "No beacon data available"));
-                    }
-                };
+        // Get beacon data
+        debug!("No X-Plane address provided, auto-discovering from beacon...");
+        let beacon_data = match beacon.get_beacon() {
+            Some(data) => data,
+            None => {
+                error!("No beacon data available, cannot auto-discover X-Plane");
+                return Err((Error::new(io::ErrorKind::NotFound, "No beacon data available"), auto_discover));
             }
         };
-        Ok(())
+
+        // Receiving address of X-Plane
+        let receiving = SocketAddr::new(
+            beacon_data.get_source().ip(),
+            beacon_data.get_port(),
+        );
+        debug!("Assuming X-Plane receiving address is {} from beacon", receiving);
+
+        // Sending address of X-Plane
+        let sending = SocketAddr::new(
+            beacon_data.get_source().ip(),
+            XP_DEFAULT_SENDING_PORT,
+        );
+        info!("Assuming X-Plane sending address is {}. \
+                        This should work if network settings were not overridden in the simulator.", sending);
+
+
+        let xp_receiving_socket = match UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)) {
+            Ok(socket) => socket,
+            Err(e) => {
+                error!("Failed to bind to receiving socket: {}", e);
+                return Err((e, auto_discover));
+            }
+        };
+
+        let xp_sending_socket = match UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)) {
+            Ok(socket) => socket,
+            Err(e) => {
+                error!("Failed to bind to sending socket: {}", e);
+                return Err((e, auto_discover));
+            }
+        };
+
+        // Destructure AutoDiscover
+        let AutoDiscover { beacon, .. } = auto_discover;
+
+        Ok(Session {
+            beacon: Some(beacon),
+            xp_receiving_address: receiving,
+            xp_receiving_socket: Arc::new(xp_receiving_socket),
+            xp_sending_address: sending,
+            xp_sending_socket: Arc::new(xp_sending_socket),
+            dataref_handler: DataRefHandler::default(),
+            command_handler: CommandHandler::default(),
+        })
     }
 
-    fn connect_xp(&mut self, receiving: SocketAddr, sending: SocketAddr) -> Result<(), io::Error> {
+    fn connect_xp(&mut self, receiving: SocketAddr, sending: SocketAddr) -> io::Result<()> {
         info!("Connecting to receiving side of X-Plane at {}", receiving);
-        self.xp_receiving_address = Some(receiving);
+        self.xp_receiving_address = receiving;
         self.xp_receiving_socket.connect(receiving)?;
 
         info!("Connecting to sending side of X-Plane at {}", sending);
-        self.xp_sending_address = Some(sending);
+        self.xp_sending_address = sending;
         self.xp_sending_socket.connect(sending)?;
 
         Ok(())
@@ -175,69 +136,33 @@ impl Session {
         &self.beacon
     }
 
-    pub fn run(&self) {
+    pub fn run(&mut self) -> io::Result<()> {
+        info!("Connecting to X-Plane");
+        self.connect_xp(self.xp_receiving_address, self.xp_sending_address)?;
+
         info!("Starting receiving thread");
         self.dataref_handler.spawn_run_thread(self.xp_sending_socket.clone());
+        Ok(())
     }
 
     pub fn subscribe(&mut self, dataref: &str, frequency: i32, dataref_type: DataRefType) -> io::Result<()> {
-        match self.xp_receiving_address {
-            Some(addr) => {
-                self.dataref_handler.new_subscribe(dataref, frequency, dataref_type, &self.xp_sending_socket, &addr)
-            },
-            None => {
-                error!("Cannot subscribe to dataref without connecting to X-Plane first");
-                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
-            }
-        }
+        self.dataref_handler.new_subscribe(dataref, frequency, dataref_type, &self.xp_sending_socket, &self.xp_receiving_address)
     }
 
     pub fn unsubscribe(&mut self, dataref: &str) -> io::Result<()> {
-        match self.xp_receiving_address {
-            Some(addr) => {
-                self.dataref_handler.unsubscribe(dataref, &self.xp_sending_socket, &addr)
-            },
-            None => {
-                error!("Cannot unsubscribe from dataref without connecting to X-Plane first");
-                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
-            }
-        }
+        self.dataref_handler.unsubscribe(dataref, &self.xp_sending_socket, &self.xp_receiving_address)
     }
 
     pub fn unsubscribe_all(&mut self) -> io::Result<()> {
-        match self.xp_receiving_address {
-            Some(addr) => {
-                self.dataref_handler.unsubscribe_all(&self.xp_sending_socket, &addr)
-            },
-            None => {
-                error!("Cannot unsubscribe from datarefs without connecting to X-Plane first");
-                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
-            }
-        }
+        self.dataref_handler.unsubscribe_all(&self.xp_sending_socket, &self.xp_receiving_address)
     }
 
     pub fn cmd(&self, command: &str) -> io::Result<()> {
-        match self.xp_receiving_address {
-            Some(addr) => {
-                self.command_handler.send_command(command, &self.xp_sending_socket, &addr)
-            },
-            None => {
-                error!("Cannot send command without connecting to X-Plane first");
-                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
-            }
-        }
+        self.command_handler.send_command(command, &self.xp_sending_socket, &self.xp_receiving_address)
     }
 
     pub fn alert(&self, message: AlertMessage) -> io::Result<()> {
-        match self.xp_receiving_address {
-            Some(addr) => {
-                self.command_handler.alert(message, &self.xp_sending_socket, &addr)
-            },
-            None => {
-                error!("Cannot send alert without connecting to X-Plane first");
-                Err(io::Error::new(io::ErrorKind::NotConnected, "Not connected to X-Plane"))
-            }
-        }
+        self.command_handler.alert(message, &self.xp_sending_socket, &self.xp_receiving_address)
     }
 
     pub fn get_dataref(&self, dataref: &str) -> Option<DataRefValueType> {

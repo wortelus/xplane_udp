@@ -19,6 +19,9 @@ optional = true
 version = "0.28.1"
 optional = true
 
+[dependencies.tokio]
+version = "1.42.0"
+features = ["time", "net"]
+
 [features]
-default = []
 examples = ["env_logger", "ratatui", "crossterm"]

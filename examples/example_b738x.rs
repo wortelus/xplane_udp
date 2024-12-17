@@ -1,3 +1,4 @@
+use std::io;
 use std::net::SocketAddr;
 use std::thread::sleep;
 use env_logger;
@@ -6,7 +7,7 @@ use log::{error, info};
 use xplane_udp::dataref_type::{DataRefType, DataRefValueType};
 use xplane_udp::session::Session;
 
-fn main() {
+fn main() -> io::Result<()>  {
     env_logger::init();
     // let session = Session::auto_discover_default(10000);
     let session = Session::manual(
@@ -20,22 +21,11 @@ fn main() {
         }
         Err(e) => {
             error!("Failed to auto-discover X-Plane: {}", e);
-            return;
+            return Err(e);
         }
     };
 
-    info!("Intercepting X-Plane beacon messages");
-    let _ = match session.connect() {
-        Ok(conn) => {
-            conn
-        }
-        Err(e) => {
-            error!("Failed to connect to X-Plane: {}", e);
-            return;
-        }
-    };
-
-    session.run();
+    session.run()?;
 
     match session.subscribe("sim/aircraft/engine/acf_num_engines", 1, DataRefType::Int) {
         Ok(_) => {
@@ -72,15 +62,15 @@ fn main() {
             Some(DataRefValueType::Int(dome)) => {
                 match dome {
                     -1 => {
-                        session.cmd("laminar/B738/toggle_switch/cockpit_dome_up").unwrap();
+                        session.cmd("laminar/B738/toggle_switch/cockpit_dome_up")?;
                         info!("Dome: {:?}", dome);
                     }
                     0 => {
-                        session.cmd("laminar/B738/toggle_switch/cockpit_dome_up").unwrap();
+                        session.cmd("laminar/B738/toggle_switch/cockpit_dome_up")?;
                         info!("Dome: {:?}", dome);
                     }
                     1 => {
-                        session.cmd("laminar/B738/toggle_switch/cockpit_dome_dn").unwrap();
+                        session.cmd("laminar/B738/toggle_switch/cockpit_dome_dn")?;
                         info!("Dome: {:?}", dome);
                     }
                     _ => {
@@ -95,5 +85,6 @@ fn main() {
         sleep(std::time::Duration::from_secs(1));
     }
 
-    info!("Shutting down")
+    info!("Shutting down");
+    Ok(())
 }

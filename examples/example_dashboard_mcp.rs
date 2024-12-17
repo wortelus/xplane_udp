@@ -62,8 +62,7 @@ fn main() -> io::Result<()> {
         SocketAddr::from(([10, 0, 0, 10], 49001)),
     )?;
 
-    session.connect()?;
-    session.run();
+    session.run()?;
 
     // Subscribe to datarefs in A and B fields
     for field in consts_b738x::MCP_A_FIELDS.iter().chain(consts_b738x::MCP_B_FIELDS.iter()) {
