@@ -3,25 +3,32 @@ use std::net::SocketAddr;
 use std::thread::sleep;
 use env_logger;
 use log::{error, info};
-
+use xplane_udp::auto_discover::AutoDiscover;
 use xplane_udp::dataref_type::{DataRefType, DataRefValueType};
 use xplane_udp::session::Session;
 
 #[tokio::main]
-async fn main() -> io::Result<()>  {
+async fn main() -> io::Result<()> {
     env_logger::init();
-    // let session = Session::auto_discover_default(10000);
-    let session = Session::manual(
-        SocketAddr::from(([10, 0, 0, 10], 49000)),
-        SocketAddr::from(([10, 0, 0, 10], 49001)),
-    );
-
-    let mut session = match session.await {
-        Ok(session) => {
-            session
+    let auto_discover = AutoDiscover::auto_discover_default(10000).await;
+    let auto_discover = match auto_discover {
+        Ok(auto_discover) => {
+            info!("Auto-discovered X-Plane");
+            auto_discover
         }
         Err(e) => {
             error!("Failed to auto-discover X-Plane: {}", e);
+            return Err(e);
+        }
+    };
+
+    let mut session = Session::intercept_beacon(auto_discover).await;
+    let mut session = match session {
+        Ok(session) => {
+            session
+        }
+        Err((e, _)) => {
+            error!("Failed to intercept X-Plane: {}", e);
             return Err(e);
         }
     };
@@ -90,3 +97,4 @@ async fn main() -> io::Result<()>  {
     session.shutdown().await;
     Ok(())
 }
+

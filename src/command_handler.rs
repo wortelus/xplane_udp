@@ -1,6 +1,7 @@
 use std::io;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{SocketAddr};
 use log::{debug};
+use tokio::net::UdpSocket;
 
 use crate::consts::ALRT_PREFIX;
 
@@ -33,10 +34,10 @@ impl CommandHandler {
         format!("CMND\0{}\0", command)
     }
 
-    pub fn send_command(&self, command: &str, sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
+    pub async fn send_command(&self, command: &str, sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
         debug!("Sending command {}", command);
         let message = self.cmd_message(command);
-        sending_socket.send_to(message.as_bytes(), receiving_address)?;
+        sending_socket.send_to(message.as_bytes(), receiving_address).await?;
         Ok(())
     }
 
@@ -66,10 +67,10 @@ impl CommandHandler {
         message
     }
 
-    pub fn alert(&self, alert_message: AlertMessage, sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
+    pub async fn alert(&self, alert_message: AlertMessage, sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
         debug!("Sending alert");
         let message = self.alert_message(alert_message);
-        sending_socket.send_to(message.as_slice(), receiving_address)?;
+        sending_socket.send_to(message.as_slice(), receiving_address).await?;
         Ok(())
     }
 }

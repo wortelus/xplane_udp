@@ -29,7 +29,7 @@ fn display_pg(value: &str) -> Paragraph {
     ]).alignment(Alignment::Center).block(Block::default().borders(Borders::NONE))
 }
 
-fn execute_command(command: &str, session: &Session) -> io::Result<bool> {
+async fn execute_command(command: &str, session: &Session) -> io::Result<bool> {
     let parts: Vec<&str> = command.split_whitespace().collect();
     let cmd = parts[0];
 
@@ -42,28 +42,28 @@ fn execute_command(command: &str, session: &Session) -> io::Result<bool> {
 
         alert.set_line("wortelus from xplane_udp is saying...", 0)?;
         alert.set_line(&msg, 1)?;
-        session.alert(alert)?;
+        session.alert(alert).await?;
     } else if cmd.starts_with("cmd") {
         let parts: Vec<&str> = cmd.split_whitespace().collect();
         if parts.len() != 2 {
             return Ok(false);
         }
-        session.cmd(parts[1])?;
+        session.cmd(parts[1]).await?;
     }
 
     Ok(false)
 }
 
 
-fn main() -> io::Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> io::Result<()> {
     // let mut session = Session::auto_discover_default(10000)?;
     let mut session = Session::manual(
         SocketAddr::from(([10, 0, 0, 10], 49000)),
         SocketAddr::from(([10, 0, 0, 10], 49001)),
-    )?;
+    ).await?;
 
-    session.connect()?;
-    session.run();
+    session.run().await?;
 
     // Subscribe to datarefs in A and B fields
     for field in consts_b738x::MCP_A_FIELDS.iter().chain(consts_b738x::MCP_B_FIELDS.iter()) {
@@ -71,7 +71,7 @@ fn main() -> io::Result<()> {
             Digits => xplane_udp::dataref_type::DataRefType::Int,
             Gb => xplane_udp::dataref_type::DataRefType::Int,
         };
-        session.subscribe(&field.dataref, 5, dr_type)?;
+        session.subscribe(&field.dataref, 5, dr_type).await?;
     }
 
     let mut command_buffer = String::new();
@@ -161,7 +161,7 @@ fn main() -> io::Result<()> {
                     }
                     KeyCode::Enter => {
                         // Execute the command and clear the buffer
-                        match execute_command(&command_buffer, &session) {
+                        match execute_command(&command_buffer, &session).await {
                             Ok(true) => break,
                             _ => {}
                         }
@@ -173,6 +173,7 @@ fn main() -> io::Result<()> {
         }
     }
 
+    session.shutdown().await;
     restore();
     Ok(())
 }
