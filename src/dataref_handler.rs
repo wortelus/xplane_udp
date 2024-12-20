@@ -1,9 +1,11 @@
-use std::{io, thread};
-use std::net::{SocketAddr, UdpSocket};
+use std::io;
+use std::net::{SocketAddr};
 use std::sync::Arc;
 use dashmap::DashMap;
 use log::{debug, error, info};
-
+use tokio::net::UdpSocket;
+use tokio::task;
+use tokio::task::JoinHandle;
 use crate::consts::RREF_PREFIX;
 use crate::dataref::DataRef;
 use crate::dataref_type::{DataRefType, DataRefValueType};
@@ -20,6 +22,8 @@ pub struct DataRefHandler {
     index_counter: i32,
     id_datarefs: Arc<DashMap<i32, DataRef>>,
     name_id_map: DashMap<String, i32>,
+
+    handle: Option<JoinHandle<()>>,
 }
 
 impl Default for DataRefHandler {
@@ -34,6 +38,7 @@ impl DataRefHandler {
             index_counter: 1,
             id_datarefs: Arc::new(DashMap::new()),
             name_id_map: DashMap::new(),
+            handle: None,
         }
     }
 
@@ -80,27 +85,34 @@ impl DataRefHandler {
         MessageStatus::Ok(vars_count)
     }
 
-    pub fn spawn_run_thread(&self, receiving_socket: Arc<UdpSocket>) {
+    pub fn spawn_run_thread(&mut self, receiving_socket: Arc<UdpSocket>) {
         info!("Spawning dataref handler thread");
+
+        if self.handle.is_some() {
+            error!("Dataref handler thread already running");
+            return;
+        }
+
         let mut datarefs = self.id_datarefs.clone();
-        thread::spawn(move || {
+        let handle = task::spawn(async move {
             let mut buffer = [0; 4096];
+
             loop {
-                match receiving_socket.recv(&mut buffer) {
+                match receiving_socket.recv(&mut buffer).await {
                     Ok(received) => {
                         match DataRefHandler::process_message(&mut datarefs, &buffer[..received]) {
                             MessageStatus::Ok(count) => {
-                                debug!("Processed RREF message with {} bytes ({} dataref updates)", received, count);
-                                continue;
+                                debug!(
+                                    "Processed RREF message with {} bytes ({} dataref updates)",
+                                    received, count
+                                );
                             }
                             MessageStatus::WrongPrefix => {
                                 debug!("Received non-RREF data");
-                                continue;
                             }
                             MessageStatus::InvalidData | MessageStatus::InvalidLength => {
                                 error!("Failed to process RREF message");
                                 debug!("Received data: {:?}", &buffer[..received]);
-                                continue;
                             }
                         }
                     }
@@ -110,16 +122,18 @@ impl DataRefHandler {
                 }
             }
         });
+
+        self.handle = Some(handle);
     }
 
-    pub fn new_subscribe(&mut self, name: &str, frequency: i32, dataref_type: DataRefType,
-                         sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
+    pub async fn new_subscribe(&mut self, name: &str, frequency: i32, dataref_type: DataRefType,
+                               sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
         // TODO: smarter index counter
         let index = self.index_counter;
         self.index_counter += 1;
 
         let dataref = DataRef::new(name, index, frequency, dataref_type);
-        sending_socket.send_to(dataref.subscription_message().as_slice(), receiving_address)?;
+        sending_socket.send_to(dataref.subscription_message().as_slice(), receiving_address).await?;
 
         self.id_datarefs.insert(dataref.get_index(), dataref);
         self.name_id_map.insert(name.to_string(), index);
@@ -127,8 +141,8 @@ impl DataRefHandler {
         Ok(())
     }
 
-    pub fn unsubscribe(&mut self, dataref: &str,
-                       sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
+    pub async fn unsubscribe(&mut self, dataref: &str,
+                             sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
         let index = match self.name_id_map.get(dataref) {
             Some(e) => *e,
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "Dataref not found")),
@@ -140,15 +154,15 @@ impl DataRefHandler {
         };
 
         let message = dataref.unsubscribe_message();
-        sending_socket.send_to(message.as_slice(), receiving_address)?;
+        sending_socket.send_to(message.as_slice(), receiving_address).await?;
 
         Ok(())
     }
 
-    pub fn unsubscribe_all(&mut self, sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
+    pub async fn unsubscribe_all(&mut self, sending_socket: &UdpSocket, receiving_address: &SocketAddr) -> io::Result<()> {
         let keys: Vec<String> = self.name_id_map.iter().map(|e| e.key().clone()).collect();
         for name in keys {
-            self.unsubscribe(name.as_str(), sending_socket, receiving_address)?;
+            self.unsubscribe(name.as_str(), sending_socket, receiving_address).await?;
         }
 
 
@@ -164,5 +178,13 @@ impl DataRefHandler {
             None => return None,
         };
         self.id_datarefs.get(&index).map(|e| e.get())
+    }
+}
+
+impl Drop for DataRefHandler {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
     }
 }

@@ -21,7 +21,7 @@ optional = true
 
 [dependencies.tokio]
 version = "1.42.0"
-features = ["time", "net"]
+features = ["time", "net", "macros", "rt", "rt-multi-thread"]
 
 [features]
 examples = ["env_logger", "ratatui", "crossterm"]

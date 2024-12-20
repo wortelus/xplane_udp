@@ -1,9 +1,10 @@
 use std::io;
 use std::io::Error;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use log::{debug, error, info};
-
+use tokio::net::UdpSocket;
+use tokio::runtime::Builder;
 use crate::consts::XP_DEFAULT_SENDING_PORT;
 use crate::beacon::Beacon;
 use crate::auto_discover::AutoDiscover;
@@ -24,16 +25,16 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn manual(xp_receiving_address: SocketAddr,
-                  xp_sending_address: SocketAddr) -> io::Result<Self> {
-        let xp_receiving_socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+    pub async fn manual(xp_receiving_address: SocketAddr,
+                        xp_sending_address: SocketAddr) -> io::Result<Self> {
+        let xp_receiving_socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)).await
             .map_err(|e| {
                 error!("Failed to bind to receiving socket: {}", e);
                 e
             })?;
         debug!("Receiving socket bound to {}", xp_receiving_socket.local_addr()?);
 
-        let xp_sending_socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+        let xp_sending_socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)).await
             .map_err(|e| {
                 error!("Failed to bind to sending socket: {}", e);
                 e
@@ -90,7 +91,7 @@ impl Session {
                         This should work if network settings were not overridden in the simulator.", sending);
 
 
-        let xp_receiving_socket = match UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)) {
+        let xp_receiving_socket = match UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)).await {
             Ok(socket) => socket,
             Err(e) => {
                 error!("Failed to bind to receiving socket: {}", e);
@@ -98,7 +99,7 @@ impl Session {
             }
         };
 
-        let xp_sending_socket = match UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)) {
+        let xp_sending_socket = match UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)).await {
             Ok(socket) => socket,
             Err(e) => {
                 error!("Failed to bind to sending socket: {}", e);
@@ -120,14 +121,14 @@ impl Session {
         })
     }
 
-    fn connect_xp(&mut self, receiving: SocketAddr, sending: SocketAddr) -> io::Result<()> {
+    async fn connect_xp(&mut self, receiving: SocketAddr, sending: SocketAddr) -> io::Result<()> {
         info!("Connecting to receiving side of X-Plane at {}", receiving);
         self.xp_receiving_address = receiving;
-        self.xp_receiving_socket.connect(receiving)?;
+        self.xp_receiving_socket.connect(receiving).await?;
 
         info!("Connecting to sending side of X-Plane at {}", sending);
         self.xp_sending_address = sending;
-        self.xp_sending_socket.connect(sending)?;
+        self.xp_sending_socket.connect(sending).await?;
 
         Ok(())
     }
@@ -136,37 +137,62 @@ impl Session {
         &self.beacon
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
+    pub async fn run(&mut self) -> io::Result<()> {
         info!("Connecting to X-Plane");
-        self.connect_xp(self.xp_receiving_address, self.xp_sending_address)?;
+        self.connect_xp(self.xp_receiving_address, self.xp_sending_address).await?;
 
         info!("Starting receiving thread");
         self.dataref_handler.spawn_run_thread(self.xp_sending_socket.clone());
         Ok(())
     }
 
-    pub fn subscribe(&mut self, dataref: &str, frequency: i32, dataref_type: DataRefType) -> io::Result<()> {
-        self.dataref_handler.new_subscribe(dataref, frequency, dataref_type, &self.xp_sending_socket, &self.xp_receiving_address)
+    pub async fn subscribe(&mut self, dataref: &str, frequency: i32, dataref_type: DataRefType) -> io::Result<()> {
+        self.dataref_handler.new_subscribe(
+            dataref, frequency, dataref_type, &self.xp_sending_socket, &self.xp_receiving_address)
+            .await
+
     }
 
-    pub fn unsubscribe(&mut self, dataref: &str) -> io::Result<()> {
-        self.dataref_handler.unsubscribe(dataref, &self.xp_sending_socket, &self.xp_receiving_address)
+    pub async fn unsubscribe(&mut self, dataref: &str) -> io::Result<()> {
+        self.dataref_handler.unsubscribe(
+            dataref, &self.xp_sending_socket, &self.xp_receiving_address)
+            .await
     }
 
-    pub fn unsubscribe_all(&mut self) -> io::Result<()> {
-        self.dataref_handler.unsubscribe_all(&self.xp_sending_socket, &self.xp_receiving_address)
+    pub async fn unsubscribe_all(&mut self) -> io::Result<()> {
+        self.dataref_handler.unsubscribe_all(
+            &self.xp_sending_socket, &self.xp_receiving_address)
+            .await
     }
 
-    pub fn cmd(&self, command: &str) -> io::Result<()> {
-        self.command_handler.send_command(command, &self.xp_sending_socket, &self.xp_receiving_address)
+    pub async fn cmd(&self, command: &str) -> io::Result<()> {
+        self.command_handler.send_command(
+            command, &self.xp_sending_socket, &self.xp_receiving_address)
+            .await
     }
 
-    pub fn alert(&self, message: AlertMessage) -> io::Result<()> {
-        self.command_handler.alert(message, &self.xp_sending_socket, &self.xp_receiving_address)
+    pub async fn alert(&self, message: AlertMessage) -> io::Result<()> {
+        self.command_handler.alert(
+            message, &self.xp_sending_socket, &self.xp_receiving_address)
+            .await
     }
 
     pub fn get_dataref(&self, dataref: &str) -> Option<DataRefValueType> {
         self.dataref_handler.get_dataref(dataref)
+    }
+
+    pub async fn shutdown(mut self) {
+        // Close beacon, if it exists
+        if let Some(ref beacon) = self.beacon {
+            let _ = beacon.close_beacon();
+        }
+
+        // Unsubscribe from all datarefs
+        if let Err(e) = self.unsubscribe_all().await {
+            error!("Failed to unsubscribe from all datarefs: {}", e);
+        }
+
+        info!("Shutting down session");
     }
 }
 
@@ -179,9 +205,12 @@ impl Drop for Session {
 
         // Unsubscribe from all datarefs
         // This tells X-Plane to actually stop sending data
-        if let Err(e) = self.unsubscribe_all() {
-            error!("Failed to unsubscribe from all datarefs: {}", e);
-        }
+
+        // Commented out due to async unsubscribe_all
+
+        // if let Err(e) = self.unsubscribe_all() {
+        //     error!("Failed to unsubscribe from all datarefs: {}", e);
+        // }
 
         info!("Session dropped");
     }
