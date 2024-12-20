@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::thread::sleep;
 use env_logger;
 use log::{error, info};
+
 use xplane_udp::auto_discover::AutoDiscover;
 use xplane_udp::dataref_type::{DataRefType, DataRefValueType};
 use xplane_udp::session::Session;
@@ -10,6 +11,7 @@ use xplane_udp::session::Session;
 #[tokio::main]
 async fn main() -> io::Result<()> {
     env_logger::init();
+    
     let auto_discover = AutoDiscover::auto_discover_default(10000).await;
     let auto_discover = match auto_discover {
         Ok(auto_discover) => {

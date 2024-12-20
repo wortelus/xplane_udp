@@ -10,7 +10,7 @@ use xplane_udp::session::Session;
 #[tokio::main]
 async fn main() -> io::Result<()>  {
     env_logger::init();
-    // let session = Session::auto_discover_default(10000);
+    
     let session = Session::manual(
         SocketAddr::from(([10, 0, 0, 10], 49000)),
         SocketAddr::from(([10, 0, 0, 10], 49001)),
@@ -21,7 +21,7 @@ async fn main() -> io::Result<()>  {
             session
         }
         Err(e) => {
-            error!("Failed to auto-discover X-Plane: {}", e);
+            error!("Failed to connect to X-Plane: {}", e);
             return Err(e);
         }
     };

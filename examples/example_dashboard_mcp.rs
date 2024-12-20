@@ -8,6 +8,7 @@ use std::time::Duration;
 use crossterm::event;
 use crossterm::event::{poll, KeyCode};
 use ratatui::{init, restore};
+
 use xplane_udp::command_handler::AlertMessage;
 use xplane_udp::session::Session;
 
@@ -55,9 +56,8 @@ async fn execute_command(command: &str, session: &Session) -> io::Result<bool> {
 }
 
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> io::Result<()> {
-    // let mut session = Session::auto_discover_default(10000)?;
     let mut session = Session::manual(
         SocketAddr::from(([10, 0, 0, 10], 49000)),
         SocketAddr::from(([10, 0, 0, 10], 49001)),
